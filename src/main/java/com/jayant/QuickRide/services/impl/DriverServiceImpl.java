@@ -2,6 +2,7 @@ package com.jayant.QuickRide.services.impl;
 
 import com.jayant.QuickRide.dto.DriverDto;
 import com.jayant.QuickRide.dto.RideDto;
+import com.jayant.QuickRide.dto.RiderDto;
 import com.jayant.QuickRide.entities.Driver;
 import com.jayant.QuickRide.entities.Payment;
 import com.jayant.QuickRide.entities.Ride;
@@ -10,10 +11,7 @@ import com.jayant.QuickRide.entities.enums.RideRequestStatus;
 import com.jayant.QuickRide.entities.enums.RideStatus;
 import com.jayant.QuickRide.exceptions.ResourceNotFoundException;
 import com.jayant.QuickRide.repositories.DriverRepository;
-import com.jayant.QuickRide.services.DriverService;
-import com.jayant.QuickRide.services.PaymentService;
-import com.jayant.QuickRide.services.RideRequestService;
-import com.jayant.QuickRide.services.RideService;
+import com.jayant.QuickRide.services.*;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.data.domain.Page;
@@ -33,6 +31,7 @@ public class DriverServiceImpl implements DriverService {
     private final RideService rideService;
     private final ModelMapper modelMapper;
     private final PaymentService paymentService;
+    private final RatingService ratingService;
 
     @Override
     @Transactional
@@ -94,6 +93,7 @@ public class DriverServiceImpl implements DriverService {
         ride.setStartedAt(LocalDateTime.now());
         Ride savedRide = rideService.updateRideStatus(ride, RideStatus.ONGOING);
         paymentService.createNewPayment(savedRide);
+        ratingService.createNewRating(savedRide);
         return modelMapper.map(savedRide, RideDto.class);
     }
 
@@ -103,7 +103,7 @@ public class DriverServiceImpl implements DriverService {
         Driver driver = getCurrentDriver();
 
         if(!driver.equals(ride.getDriver())) {
-            throw new RuntimeException("Driver cannot start a ride as he has not accepted it earlier");
+            throw new RuntimeException("Driver cannot end a ride as he has not accepted it earlier");
         }
 
         if(!ride.getRideStatus().equals(RideStatus.ONGOING)) {
@@ -120,8 +120,18 @@ public class DriverServiceImpl implements DriverService {
     }
 
     @Override
-    public RideDto rateRider(Long rideId, Integer rating) {
-        return null;
+    public RiderDto rateRider(Long rideId, Integer rating) {
+        Ride ride = rideService.getRideById(rideId);
+        Driver driver = getCurrentDriver();
+
+        if(!driver.equals(ride.getDriver())) {
+            throw new RuntimeException("Driver is not the owner of this Ride");
+        }
+
+        if(!ride.getRideStatus().equals(RideStatus.ENDED)) {
+            throw new RuntimeException("Ride status is not Ended hence cannot start rating, status: "+ride.getRideStatus());
+        }
+        return ratingService.rateRider(ride, rating);
     }
 
     @Override
@@ -147,6 +157,11 @@ public class DriverServiceImpl implements DriverService {
     @Override
     public Driver updateDriverAvailability(Driver driver, boolean available) {
         driver.setAvailable(available);
+        return driverRepository.save(driver);
+    }
+
+    @Override
+    public Driver createNewDriver(Driver driver) {
         return driverRepository.save(driver);
     }
 }
